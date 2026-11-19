@@ -1,0 +1,25 @@
+# --- environment ---
+env/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# --- data: never commit (size, licences, and the Mandawa test set is the professor's) ---
+data/
+!data/.gitkeep
+
+# --- model weights & checkpoints (hundreds of MB; download / retrain instead) ---
+weights/
+checkpoints/
+*.pt
+*.pth
+
+# --- generated outputs (restorations, kits, logs, label returns) ---
+outputs/
+
+# --- misc ---
+*.zip
+*.log
+.DS_Store
+Thumbs.db
+~$*

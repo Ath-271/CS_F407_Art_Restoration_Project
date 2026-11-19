@@ -1,0 +1,14 @@
+# Install PyTorch with CUDA first:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+torch>=2.3
+torchvision
+segmentation-models-pytorch>=0.3.3
+opencv-python>=4.8
+scikit-image
+numpy
+pillow
+tqdm
+matplotlib
+pandas
+nbformat
+jupyter
