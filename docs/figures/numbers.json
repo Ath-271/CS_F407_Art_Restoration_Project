@@ -1,0 +1,19 @@
+{
+  "color_best_psnr": 23.00661751627922,
+  "color_baseline_psnr": 19.21073468029499,
+  "color_best_epoch": 24,
+  "round1_real_f1": 0.29518288373947144,
+  "round1_real_iou": 0.1731463521718979,
+  "round1_best_thr_on_val": 0.2,
+  "n_val_tiles": 36,
+  "n_val_paintings": 27,
+  "round2_best_epoch": 17,
+  "round2_real_f1": 0.5488349795341492,
+  "round2_real_iou": 0.37820300459861755,
+  "round2_threshold": 0.5,
+  "round2_epochs_run": 36,
+  "agreement_mean_iou": 0.3760833333333333,
+  "agreement_median_iou": 0.3335,
+  "agreement_pairs": 36,
+  "agreement_tiles": 6
+}

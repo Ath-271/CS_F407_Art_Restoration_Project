@@ -23,7 +23,11 @@ damaged painting
 | Colour de-fading, PSNR on synthetically faded validation tiles | 23.0 dB vs 19.2 dB for the faded input |
 | Full pipeline, one 2048-px painting, RTX 4060 laptop | 8-18 s |
 
-Figures: `python scripts/make_report_figures.py` writes `outputs/report_figures/` (training curves, synthetic damage examples, round 1 vs round 2, annotator agreement, pipeline stages) plus `numbers.json` with every number above.
+Figures are in [`docs/figures/`](docs/figures/) (sources and licences in [`SOURCES.md`](docs/figures/SOURCES.md); exact numbers in `numbers.json`). To regenerate them, run `python scripts/make_report_figures.py`.
+
+![Pipeline stages](docs/figures/fig6_pipeline_stages.jpg)
+![Round 1 vs round 2 on validation paintings](docs/figures/fig4_round1_vs_round2.jpg)
+![Detection training curves](docs/figures/fig1_seg_training_curves.png)
 
 Known weaknesses seen on validation paintings: on worn plaster walls the detector marks large areas of abraded background as damage; some dense painted textures (e.g. feather patterns) are flagged; Pix2Pix can leave local colour patches in dark areas.
 
