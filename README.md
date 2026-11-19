@@ -1,14 +1,31 @@
 # Digital Restoration of Indian Folk Paintings
 
-A four-stage pipeline that turns a scan of a damaged folk painting (Madhubani, Pattachitra, Warli, Kalamkari) into a restored, high-resolution image. Alongside the image it saves a per-pixel confidence map that shows how much of each repaired area the model had to guess.
+A four-stage pipeline that turns a photo or scan of a damaged Indian folk painting or wall painting (Madhubani, Kalighat, Pattachitra, Kalamkari, Rajasthani frescoes) into a restored, high-resolution image. Alongside the image it saves a per-pixel confidence map that shows how much of each repaired area the model had to guess.
+
+CS F407 course project. The pipeline is fully automatic at inference time: no manual masks are needed for a new painting.
 
 ```
 damaged painting
   └─ M1  CLAHE (LAB) + U-Net (pretrained ResNet34)  →  damage mask  [crack | loss | stain]
   └─ M2  LaMa (Fourier convolutions) inpainting, applied inside the mask only
-  └─ M3  colour de-fading: Pix2Pix (residual U-Net + PatchGAN)  or  reference LAB transfer
+  └─ M3  colour de-fading: Pix2Pix (residual U-Net + PatchGAN), limited by how faded the input is
+          (or reference LAB transfer)
   └─ M4  Real-ESRGAN x4 tiled super-resolution  +  spatial confidence map
 ```
+
+## Results so far (validation data only; the Mandawa test has not been run yet)
+
+| | Value |
+|---|---|
+| Damage detection, F1 on 36 real validation tiles (27 paintings never used for training) | **0.55** (IoU 0.38), threshold 0.5 |
+| Same tiles, round-1 model trained on synthetic damage only | 0.30 (IoU 0.17), even with its threshold re-tuned on these tiles |
+| Agreement between our 4 annotators (calibration tiles, 36 pairs) | mean IoU 0.38 |
+| Colour de-fading, PSNR on synthetically faded validation tiles | 23.0 dB vs 19.2 dB for the faded input |
+| Full pipeline, one 2048-px painting, RTX 4060 laptop | 8-18 s |
+
+Figures: `python scripts/make_report_figures.py` writes `outputs/report_figures/` (training curves, synthetic damage examples, round 1 vs round 2, annotator agreement, pipeline stages) plus `numbers.json` with every number above.
+
+Known weaknesses seen on validation paintings: on worn plaster walls the detector marks large areas of abraded background as damage; some dense painted textures (e.g. feather patterns) are flagged; Pix2Pix can leave local colour patches in dark areas.
 
 ## Why the previous version failed on real paintings, and what changed
 
@@ -36,7 +53,9 @@ env\python scripts/download_weights.py        # big-lama.pt + RealESRGAN_x4plus.
 All commands below assume `env\python` (or activate the env: `conda activate D:\AI_Project\env`).
 For the notebook, choose the **"AI Restoration (py3.11)"** kernel. It is already registered.
 
-Note: this network blocks GitHub's release-asset server, so `download_weights.py` falls back to Hugging Face mirrors. The weights are already in `weights/`.
+Note: some networks block GitHub's release-asset server, so `download_weights.py` falls back to Hugging Face mirrors.
+
+**Not in this repository** (see `.gitignore`): `data/` (datasets and the professor's test photos), `weights/`, `checkpoints/` and `outputs/`. Pretrained LaMa / Real-ESRGAN weights come from `download_weights.py`. Our trained models (`checkpoints/seg_best.pt`, `checkpoints/color_best.pt`) are shared separately; put them in `checkpoints/` or retrain with the workflow below.
 
 **Smoke test without real data:** `python scripts/make_demo_data.py` creates procedural folk-art-style images in `data/demo/`. Use them only to check that the scripts run, never as training data for the real model.
 
@@ -54,7 +73,7 @@ If you have very few clean paintings, crop the undamaged areas out of damaged on
 
 ### Current dataset: Kaggle "Indian paintings" (MIT, 8 styles)
 ```bash
-python scripts/import_dataset.py "C:/Users/Atharva/Downloads/archive"   # -> data/pool (862 after removing duplicates and images <400px)
+python scripts/import_dataset.py path/to/kaggle/archive                   # -> data/pool (862 after removing duplicates and images <400px)
 python scripts/split_pool.py                                            # -> data/clean (806), data/damaged (21)
 ```
 - `data/pool/damaged_ids.txt` lists 21 paintings with real visible damage (flaking, abrasion, stains, losses), checked on 1:1 crops.
@@ -72,7 +91,18 @@ Source: https://huggingface.co/datasets/Divya0001/indian-art-styles (citation in
 python scripts/import_dataset.py data/external/hf_wikimedia --append --prefix hf_   # ids 862..1131
 python scripts/split_pool.py
 ```
-After hand curation (contact sheets in `outputs/contact_sheets_hf/`), this added 106 clean paintings and 4 damaged ones. The current totals are **912 clean / 25 real-damaged**.
+After hand curation (contact sheets in `outputs/contact_sheets_hf/`), this added 106 clean paintings and 4 damaged ones.
+
+### Frescoes / wall paintings: Wikimedia Commons (CC0 / PD / CC BY / CC BY-SA)
+Because the final test set is Mandawa wall paintings, we added frescoes from other places, **excluding anything from Mandawa**:
+```bash
+python scripts/collect_commons.py --max-per-seed 120   # Shekhawati towns (not Mandawa), Bundi, Rajasthan murals, Sikh havelis, Ajanta
+```
+- Every file is listed with licence, author and source URL in `data/external/commons_frescoes/attribution.csv`.
+- Hand-curated decisions per title are in `data/external/commons_frescoes_curation.csv` (photos of streets/buildings and recoloured duplicates excluded).
+- Imported as pool ids 1132-1222: 67 damaged frescoes (labelled, batch 2) and 24 clean ones.
+
+**Current totals: 936 clean / 91 real-damaged paintings, 132 hand-labelled tiles.**
 
 ## Workflow
 
@@ -100,7 +130,21 @@ python scripts/restore.py data/damaged --sr-scale 2
 python scripts/restore.py painting.jpg --color-ref protected_margin.png   # reference-based colour
 ```
 
+The colour stage measures how faded the input is (90th-percentile chroma and lightness range, compared with the clean training set) and limits the de-fading accordingly: a vivid painting is barely changed, a faded one may gain up to +40 % chroma, and global colour casts are capped. `report.json` records the fade score; `--no-adaptive-color` disables the limit.
+
 Each restored painting gets a folder in `outputs/restored/<name>/` containing the mask and overlay, the inpainted image, the colour-corrected image, the final super-resolved image, `confidence.npy` and `confidence_map.png` (green = original or reliable, red = guessed infill), and `report.json`.
+
+## Labelling as a team
+
+Labelling is split across annotators with self-contained kits (label tool + guide + launchers, only Python needed):
+```bash
+python scripts/make_label_tiles.py --src <folder of damaged paintings> --per-image 1
+python scripts/make_label_kits.py --people "Atharva,Rudranil,Soumya,Vidwath" --calib 2
+#   -> outputs/label_kits/<name>_batchN.zip ; tiles split by painting, plus shared calibration tiles
+python scripts/merge_labels.py outputs/label_returns/       # merges returns, pairwise IoU + majority-vote consensus
+python scripts/build_damage_bank.py                          # uses training paintings only (no validation leakage)
+```
+Rules for annotators are in `docs/LABELING_GUIDE.md`. Validation paintings are chosen by a stable hash of the painting name (`split_paths`), so tiles of one painting never straddle train/validation.
 
 ## Held-out test set (the professor's Mandawa paintings)
 
@@ -113,9 +157,14 @@ The data is split into three sets:
 | **test** | `data/test_holdout/` (Mandawa) | **final evaluation only, run once** |
 
 - No training or labelling script reads `data/test_holdout`. Do not copy these images anywhere else, not even into `damage_bank`.
-- Run `env\python scripts\evaluate_test.py` only after development is finished. It first checks for leaks (the same image, even re-encoded, appearing in any training folder), then evaluates with the frozen checkpoint and threshold.
-- For F1/IoU numbers, hand-label the test images into `data/test_holdout/masks/` (for example with `label_tool.py --root data/test_holdout`, after moving the images into `images/`). Labelling test images for evaluation is fine; using those labels for training or tuning is not.
-- Expect a domain gap: Mandawa frescoes are lime plaster, while the training data is mostly paper and cloth. Report the result honestly.
+- **Two-stage protocol.** `scripts/make_test_tiles.py` splits the 63 test photos into **Test A (31) / Test B (32)**, keeping photos of the same panel together and balancing style series, and saves the split in `data/test_holdout/split.csv` before any result is seen. One **random** tile per photo is labelled from a blank start (no model suggestion) as the answer key.
+  1. Score the current model **once on A**: `python scripts/evaluate_test.py --split A`
+  2. If it is satisfactory, score the same model on B (`--split B`) and report all 63.
+  3. If the model is changed after seeing A, score the changed model **once on B**; that is its unbiased number, and A becomes a development set.
+- `evaluate_test.py` runs the model on the whole photo and only then compares the labelled tile with the answer key; the checkpoint and threshold are frozen. It refuses to re-score a split without `--force`, and logs every run (time, split, checkpoint hash) to `outputs/test_runs_log.csv`.
+- It first checks for leaks (the same image, even re-encoded, appearing in any training folder).
+- **Personal hold-out:** 4 further Mandawa photos in `data/personal_holdout/` are excluded from everything, for qualitative testing only.
+- Expect a domain gap: Mandawa paintings are on lime plaster, while most training data is paper and cloth (frescoes are about 10 %). Report the result honestly.
 
 ## Validation notebook
 
