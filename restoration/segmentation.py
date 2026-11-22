@@ -59,12 +59,15 @@ class SegLoss(nn.Module):
     """Dice + Focal: robust to the heavy imbalance (damage is often <5% of pixels),
     which is what makes plain BCE collapse to "predict nothing" on real images."""
 
-    def __init__(self, any_weight: float = 2.0):
+    def __init__(self, any_weight: float = 2.0, pos_boost: float = 1.0):
         super().__init__()
         self.cw = torch.tensor([any_weight, 1.0, 1.0, 1.0]).view(1, -1, 1, 1)
+        self.pos_boost = pos_boost  # >1: missed damage pixels cost more (raises recall on small defects)
 
     def forward(self, logits, target, weight):
         w = weight * self.cw.to(weight.device)
+        if self.pos_boost != 1.0:
+            w = w * (1 + (self.pos_boost - 1) * target)
         return focal_loss(logits, target, w) * 10 + soft_dice_loss(logits, target, weight)
 
 

@@ -38,7 +38,8 @@ import numpy as np
 
 from restoration.utils import imread_any, imread_rgb, list_images, resize_max_side
 
-TRAIN_DIRS = ["data/clean", "data/damaged", "data/real_labeled/images", "data/damage_bank", "data/pool"]
+TRAIN_DIRS = ["data/clean", "data/damaged", "data/real_labeled/images", "data/damage_bank", "data/pool",
+              "data/mandawa_train/images", "data/mandawa_dev/images", "data/mandawa_A_label/images"]
 
 
 def file_hashes(paths):

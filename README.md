@@ -2,7 +2,7 @@
 
 A four-stage pipeline that turns a photo or scan of a damaged Indian folk painting or wall painting (Madhubani, Kalighat, Pattachitra, Kalamkari, Rajasthani frescoes) into a restored, high-resolution image. Alongside the image it saves a per-pixel confidence map that shows how much of each repaired area the model had to guess.
 
-CS F407 course project. The pipeline is fully automatic at inference time: no manual masks are needed for a new painting.
+CS F407 course project. The pipeline is fully automatic at inference time: no manual masks are needed for a new painting. An optional semi-automatic mode (`--review-mask`) lets a person correct the detected damage before it is repaired.
 
 ```
 damaged painting
@@ -13,13 +13,31 @@ damaged painting
   └─ M4  Real-ESRGAN x4 tiled super-resolution  +  spatial confidence map
 ```
 
-## Results so far (validation data only; the Mandawa test has not been run yet)
+## Results
+
+### Held-out test: 63 Mandawa wall-painting photos (never used for training or tuning)
+
+Automatic damage detection, frozen model (`seg_best.pt`, md5 `a11c3b0772e5`) and threshold 0.5, scored once per half:
+
+| | Test A (31 photos) | Test B (32 photos) | A + B (63) |
+|---|---|---|---|
+| F1 (pooled over pixels) | 0.27 | 0.07 | **0.19** |
+| Precision / recall | 0.39 / 0.20 | 0.14 / 0.05 | |
+| Mean per-tile F1 | 0.14 | 0.09 | |
+
+- Answer key: one random 512-px tile per photo, labelled from a blank start by 4 annotators; agreement on 3 shared tiles was mean IoU 0.45, which caps what any model can score.
+- The model finds clear cracks and chips on plain plaster, but misses small, scattered wear and flaking and the diffuse abrasion of ornamental panels. One panel (photos `19mar16`, `19mar20_*`) holds 39 % of Test B's labelled damage and is almost entirely missed; without it B is 0.10. It also over-flags worn floors and painted dot patterns.
+- Conclusion: a large **domain gap** between the training data (mostly paper and cloth) and lime-plaster walls (0.55 on in-domain validation vs 0.19 on Mandawa).
+
+**Attempted improvement (round 3, after Test A, before Test B).** Test A became a development set: its photos were split by panel into training (23 photos) and development (8 photos), 56 more tiles were labelled, and the model was fine-tuned on 64 Mandawa tiles (`--extra-real`, `--pos-boost 2`). On development tiles labelled from a blank start it tied with the original model (F1 0.40 vs 0.40), and on the old validation set it was slightly worse (0.52 vs 0.54), so the **original model was kept** for Test B. The new tiles had been labelled by correcting the model's suggested masks; on those tiles the original model scored 0.67 against 0.40 on blank-start tiles, showing that suggestion-started labels are anchored to the model that made them. They should not be used to compare models, and they probably limited what fine-tuning could learn. Checkpoints are kept in `checkpoints/round3/`; comparison: `scripts/compare_models.py`.
+
+### Validation (in-domain)
 
 | | Value |
 |---|---|
 | Damage detection, F1 on 36 real validation tiles (27 paintings never used for training) | **0.55** (IoU 0.38), threshold 0.5 |
 | Same tiles, round-1 model trained on synthetic damage only | 0.30 (IoU 0.17), even with its threshold re-tuned on these tiles |
-| Agreement between our 4 annotators (calibration tiles, 36 pairs) | mean IoU 0.38 |
+| Agreement between our 4 annotators (calibration tiles, 36 pairs) | mean IoU 0.38 (0.45 on the Mandawa test tiles) |
 | Colour de-fading, PSNR on synthetically faded validation tiles | 23.0 dB vs 19.2 dB for the faded input |
 | Full pipeline, one 2048-px painting, RTX 4060 laptop | 8-18 s |
 
@@ -29,7 +47,7 @@ Figures are in [`docs/figures/`](docs/figures/) (sources and licences in [`SOURC
 ![Round 1 vs round 2 on validation paintings](docs/figures/fig4_round1_vs_round2.jpg)
 ![Detection training curves](docs/figures/fig1_seg_training_curves.png)
 
-Known weaknesses seen on validation paintings: on worn plaster walls the detector marks large areas of abraded background as damage; some dense painted textures (e.g. feather patterns) are flagged; Pix2Pix can leave local colour patches in dark areas.
+Known weaknesses (validation and test): it misses small scattered damage and diffuse abrasion on plaster; on worn plaster walls the detector marks large areas of abraded background as damage; some dense painted textures (e.g. feather patterns) are flagged; Pix2Pix can leave local colour patches in dark areas.
 
 ## Why the previous version failed on real paintings, and what changed
 
@@ -132,7 +150,19 @@ python scripts/train_color.py --epochs 30
 # 5. Restore
 python scripts/restore.py data/damaged --sr-scale 2
 python scripts/restore.py painting.jpg --color-ref protected_margin.png   # reference-based colour
+python scripts/restore.py painting.jpg --review-mask                       # correct the mask by hand first
 ```
+
+**Running it on your own images** (Windows, from the project folder):
+```powershell
+.\env\python.exe scriptsestore.py "C:\path	o\painting.jpg"           # one image
+.\env\python.exe scriptsestore.py "C:\path	oolder" --out D:esults  # every image in a folder
+```
+Useful options: `--threshold 0.4` (detect more; 0.6 = less), `--no-color`, `--color-strength 0.5`, `--classes crack,loss`, `--sr-scale 1` (no upscaling), `--no-uncertainty` (faster).
+
+**Damage types.** `01_mask_overlay.png` is coloured by the most likely type (red crack, blue loss, yellow stain) with a legend; `01_mask_types.png` stores the type per pixel and `report.json` the % per type. The type is less reliable than the damage / no-damage decision (cracks are sometimes coloured as stains).
+
+**Semi-automatic mode (`--review-mask`).** After detection, the mask opens in the brush editor of the label tool (left-drag paint with 1 crack / 2 loss / 3 stain / 4 unknown, right-drag erase, wheel zoom, `r` back to the model's mask, `s` accept, `q` keep the model's mask). Inpainting, colour and upscaling then use the corrected mask. The model's mask (`01_mask_types_model.png`), the corrected one (`review/masks/`) and `"mask_edited_by_user"` in `report.json` are kept, so corrected results are never mistaken for automatic ones. All test scores above are fully automatic.
 
 The colour stage measures how faded the input is (90th-percentile chroma and lightness range, compared with the clean training set) and limits the de-fading accordingly: a vivid painting is barely changed, a faded one may gain up to +40 % chroma, and global colour casts are capped. `report.json` records the fade score; `--no-adaptive-color` disables the limit.
 
@@ -167,6 +197,8 @@ The data is split into three sets:
   3. If the model is changed after seeing A, score the changed model **once on B**; that is its unbiased number, and A becomes a development set.
 - `evaluate_test.py` runs the model on the whole photo and only then compares the labelled tile with the answer key; the checkpoint and threshold are frozen. It refuses to re-score a split without `--force`, and logs every run (time, split, checkpoint hash) to `outputs/test_runs_log.csv`.
 - It first checks for leaks (the same image, even re-encoded, appearing in any training folder).
+- **What happened:** A was scored once (F1 0.27); the model was then changed (round 3) but did not beat the original on blank-labelled development tiles, so the **original** model was scored once on B (F1 0.07). Both runs are in `outputs/test_runs_log.csv`. B is now used up: later changes cannot get a new unbiased Mandawa score.
+- Round-3 tools: `make_mandawa_dev_tiles.py` (extra tiles from Test A photos only, split by panel into train/dev, saved once in `data/mandawa_A_label/roles.csv`), `prepare_mandawa_round.py`, `train_seg.py --init --extra-real --dev --pos-boost --low-mem`, `compare_models.py`.
 - **Personal hold-out:** 4 further Mandawa photos in `data/personal_holdout/` are excluded from everything, for qualitative testing only.
 - Expect a domain gap: Mandawa paintings are on lime plaster, while most training data is paper and cloth (frescoes are about 10 %). Report the result honestly.
 

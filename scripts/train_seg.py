@@ -9,6 +9,9 @@ Data:
     data/real_labeled/masks     their masks (0/1/2/3/255) } make_label_tiles + label_tool
     data/damage_bank/           optional real damage cut-outs (build_damage_bank.py)
 
+Fine-tuning on a new domain (e.g. Mandawa development tiles):
+    python scripts/train_seg.py --init checkpoints/seg_best.pt --out checkpoints/round3         --extra-real data/mandawa_train --dev data/mandawa_dev --pos-boost 2 --low-mem
+
 Model selection uses F1 on REAL labelled validation tiles whenever they exist --
 synthetic validation scores are misleading (that is how the old model looked
 good but failed on real paintings).
@@ -52,11 +55,18 @@ def parse():
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--no-clahe", action="store_true")
     ap.add_argument("--resume", default=None)
+    ap.add_argument("--init", default=None, help="start from these weights (fine-tune), fresh optimiser")
+    ap.add_argument("--extra-real", nargs="*", default=[], help="labelled dirs ALWAYS used for training (no val split)")
+    ap.add_argument("--extra-repeat", type=int, default=3, help="oversample extra-real tiles this many times")
+    ap.add_argument("--dev", default=None, help="labelled dir pooled with real val for model selection")
+    ap.add_argument("--pos-boost", type=float, default=1.0, help="loss weight on damage pixels (>1 = favour recall)")
+    ap.add_argument("--low-mem", action="store_true", help="2 workers, no image cache (avoids running out of RAM)")
+    ap.add_argument("--max-side", type=int, default=3000, help="cap training images at this size")
     return ap.parse_args()
 
 
 @torch.no_grad()
-def evaluate(model, loader, device):
+def confusion(model, loader, device):
     model.eval()
     conf = torch.zeros(len(THRESHOLDS), 3, device=device)
     for b in loader:
@@ -64,6 +74,18 @@ def evaluate(model, loader, device):
         with torch.autocast(device.type, enabled=device.type == "cuda"):
             p = torch.sigmoid(model(x).float())
         conf += confusion_at_thresholds(p[:, 0], t[:, 0], THRESHOLDS)
+    return conf
+
+
+def best_of(conf):
+    f1, iou = f1_iou(conf)
+    i = int(f1.argmax())
+    return float(f1[i]), float(iou[i]), THRESHOLDS[i]
+
+
+@torch.no_grad()
+def evaluate(model, loader, device):
+    conf = confusion(model, loader, device)
     f1, iou = f1_iou(conf)
     i = int(f1.argmax())
     return float(f1[i]), float(iou[i]), THRESHOLDS[i]
@@ -98,6 +120,13 @@ def main():
     clean = list_images(a.clean)
     real = load_real_pairs(a.real)
     real_tr, real_val = split_paths(real, a.real_val_frac, seed=0) if real else ([], [])
+    extra = [pr for d in a.extra_real for pr in load_real_pairs(d)]
+    real_tr = real_tr + extra * a.extra_repeat
+    dev = load_real_pairs(a.dev) if a.dev else []
+    if a.extra_real:
+        print(f"extra training tiles (always train, x{a.extra_repeat}): {len(extra)} | dev tiles: {len(dev)}")
+    if a.low_mem:
+        a.workers = min(a.workers, 2)
     bank = load_damage_bank(a.bank)
     print(f"clean images: {len(clean)} | real labelled: {len(real)} (train {len(real_tr)}, val {len(real_val)}) | bank items: {len(bank)}")
     if not real_val:
@@ -106,11 +135,13 @@ def main():
 
     use_clahe = not a.no_clahe
     cfg = SynthConfig(damage_bank=bank)
-    train_ds = SegDataset(clean, real_tr, a.tile, a.steps * a.batch, a.p_real, cfg, use_clahe)
+    train_ds = SegDataset(clean, real_tr, a.tile, a.steps * a.batch, a.p_real, cfg, use_clahe,
+                          cache=not a.low_mem, max_side=a.max_side)
     synth_val_ds = SegDataset(clean, [], a.tile, a.synth_val, 0.0, SynthConfig(damage_bank=bank), use_clahe, seed=12345) if clean else None
     real_val_ds = RealValDataset(real_val, a.tile, use_clahe) if real_val else None
+    dev_dl = DataLoader(RealValDataset(dev, a.tile, use_clahe), batch_size=a.batch, num_workers=0) if dev else None
 
-    dl_kw = dict(num_workers=a.workers, pin_memory=True, persistent_workers=a.workers > 0)
+    dl_kw = dict(num_workers=a.workers, pin_memory=True, persistent_workers=a.workers > 0 and not a.low_mem)
     train_dl = DataLoader(train_ds, batch_size=a.batch, shuffle=True, drop_last=True, **dl_kw)
     synth_dl = DataLoader(synth_val_ds, batch_size=a.batch, **dl_kw) if synth_val_ds else None
     real_dl = DataLoader(real_val_ds, batch_size=a.batch, num_workers=0) if real_val_ds else None
@@ -119,8 +150,11 @@ def main():
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=a.epochs * a.steps, pct_start=0.1)
     scaler = torch.amp.GradScaler(enabled=device.type == "cuda")
-    crit = SegLoss()
+    crit = SegLoss(pos_boost=a.pos_boost)
     start, best = 0, -1.0
+    if a.init:
+        model.load_state_dict(torch.load(a.init, map_location="cpu", weights_only=False)["state_dict"])
+        print(f"fine-tuning from {a.init}")
     if a.resume:
         ck = torch.load(a.resume, map_location="cpu", weights_only=False)
         model.load_state_dict(ck["state_dict"])
@@ -131,7 +165,8 @@ def main():
     with open(log, "w" if new_log else "a", newline="") as fh:
         w = csv.writer(fh)
         if new_log:
-            w.writerow(["epoch", "train_loss", "synth_f1", "synth_iou", "synth_thr", "real_f1", "real_iou", "real_thr", "lr", "time_s"])
+            w.writerow(["epoch", "train_loss", "synth_f1", "synth_iou", "synth_thr", "real_f1", "real_iou", "real_thr", "lr", "time_s"]
+                       + (["dev_f1", "sel_f1", "sel_thr"] if dev_dl else []))
         for ep in range(start, a.epochs):
             model.train()
             t0, tot, n = time.time(), 0.0, 0
@@ -153,12 +188,20 @@ def main():
                     print(f"  ep {ep} step {i}/{len(train_dl)} loss {loss.item():.4f}", flush=True)
 
             s_f1, s_iou, s_thr = evaluate(model, synth_dl, device) if synth_dl else (float("nan"),) * 3
-            r_f1, r_iou, r_thr = evaluate(model, real_dl, device) if real_dl else (float("nan"),) * 3
+            r_conf = confusion(model, real_dl, device) if real_dl else None
+            r_f1, r_iou, r_thr = best_of(r_conf) if real_dl else (float("nan"),) * 3
             score, thr = (r_f1, r_thr) if real_dl else (s_f1, s_thr)
+            dev_cols = []
+            if dev_dl:  # select on real val + dev pooled, one threshold for both
+                d_conf = confusion(model, dev_dl, device)
+                d_f1 = best_of(d_conf)[0]
+                score, _, thr = best_of(d_conf + r_conf if r_conf is not None else d_conf)
+                print(f"  dev F1 {d_f1:.3f} | selection (val+dev pooled) F1 {score:.3f} @{thr}", flush=True)
+                dev_cols = [d_f1, score, thr]
             lr = opt.param_groups[0]["lr"]
             print(f"epoch {ep}: loss {tot / max(n, 1):.4f} | synth F1 {s_f1:.3f} IoU {s_iou:.3f} @{s_thr} | "
                   f"REAL F1 {r_f1:.3f} IoU {r_iou:.3f} @{r_thr} | {time.time() - t0:.0f}s", flush=True)
-            w.writerow([ep, tot / max(n, 1), s_f1, s_iou, s_thr, r_f1, r_iou, r_thr, lr, time.time() - t0])
+            w.writerow([ep, tot / max(n, 1), s_f1, s_iou, s_thr, r_f1, r_iou, r_thr, lr, time.time() - t0] + dev_cols)
             fh.flush()
 
             extra = {"epoch": ep, "score": score, "real_f1": r_f1, "synth_f1": s_f1}

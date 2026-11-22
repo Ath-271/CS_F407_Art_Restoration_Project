@@ -24,6 +24,31 @@ from .uncertainty import confidence_heatmap, confidence_map, inpaint_disagreemen
 from .utils import imwrite, overlay_mask, resize_max_side
 
 
+# damage types as in the label tool: 1 crack, 2 loss, 3 stain, 255 unknown (RGB colours)
+TYPE_COLORS = {1: (255, 0, 0), 2: (0, 80, 255), 3: (255, 220, 0), 255: (255, 0, 255)}
+TYPE_NAMES = {1: "crack", 2: "loss", 3: "stain", 255: "unknown"}
+
+
+def overlay_types(img: np.ndarray, types: np.ndarray, alpha: float = 0.55) -> np.ndarray:
+    """Damage overlay coloured by type, with a small legend in the top-left corner."""
+    out = img.astype(np.float32).copy()
+    for c, rgb in TYPE_COLORS.items():
+        m = types == c
+        out[m] = out[m] * (1 - alpha) + np.array(rgb, np.float32) * alpha
+    out = out.clip(0, 255).astype(np.uint8)
+    s = max(1.0, img.shape[1] / 1400)
+    y = int(8 * s)
+    for c in (1, 2, 3):
+        cv2.rectangle(out, (int(8 * s), y), (int(26 * s), y + int(14 * s)), TYPE_COLORS[c], -1)
+        cv2.rectangle(out, (int(8 * s), y), (int(26 * s), y + int(14 * s)), (0, 0, 0), 1)
+        cv2.putText(out, TYPE_NAMES[c], (int(32 * s), y + int(12 * s)), cv2.FONT_HERSHEY_SIMPLEX, 0.45 * s,
+                    (0, 0, 0), max(1, int(3 * s)), cv2.LINE_AA)
+        cv2.putText(out, TYPE_NAMES[c], (int(32 * s), y + int(12 * s)), cv2.FONT_HERSHEY_SIMPLEX, 0.45 * s,
+                    (255, 255, 255), max(1, int(s)), cv2.LINE_AA)
+        y += int(20 * s)
+    return out
+
+
 class RestorationPipeline:
     def __init__(
         self,
@@ -54,16 +79,29 @@ class RestorationPipeline:
 
     # ------------------------------------------------------------------ stages
     def detect(self, img, threshold=None, classes=("crack", "loss", "stain"), tta=True, dilate=3):
+        self.last_probs = None
         if self.seg is None:
             m = classical_crack_mask(img)
             return m, None, None, 0.5
         thr = float(threshold if threshold is not None else self.seg_ck.get("threshold", 0.5))
         probs, tta_std = predict_probs(self.seg, img, self.device, use_clahe=self.seg_ck.get("use_clahe", True), tta=tta)
+        self.last_probs = probs
         if set(classes) >= {"crack", "loss", "stain"}:
             p = probs[..., 0]
         else:
             p = probs[..., [CHANNELS.index(c) for c in classes]].max(-1)
         return postprocess_mask(p, thr, dilate=dilate), p, tta_std, thr
+
+    def type_map(self, mask: np.ndarray) -> np.ndarray:
+        """Per-pixel damage type inside `mask` (1 crack, 2 loss, 3 stain): the most likely type."""
+        types = np.zeros(mask.shape[:2], np.uint8)
+        m = mask > 0
+        if self.last_probs is None:
+            types[m] = 1
+        else:
+            cls = (self.last_probs[..., 1:].argmax(-1) + 1).astype(np.uint8)
+            types[m] = cls[m]
+        return types
 
     def recolor(self, img, color_ref=None, strength=1.0, auto_boost=False, adaptive=True):
         self.color_info = {}
@@ -93,6 +131,7 @@ class RestorationPipeline:
         uncertainty: bool = True,
         tta: bool = True,
         dilate: int = 4,
+        mask_editor=None,
     ) -> dict:
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
@@ -104,8 +143,18 @@ class RestorationPipeline:
         t = time.time()
         mask, prob, tta_std, thr = self.detect(work, threshold, classes, tta, dilate)
         timings["segmentation"] = time.time() - t
+        types = self.type_map(mask)
+        edited = False
+        if mask_editor is not None:  # semi-automatic: a person corrects the predicted mask
+            imwrite(out / "01_mask_types_model.png", overlay_types(work, types))
+            new = mask_editor(work, types, out)
+            if new is not None:
+                edited = not np.array_equal(new, types)
+                types = new.astype(np.uint8)
+                mask = np.where(types > 0, 255, 0).astype(np.uint8)
         imwrite(out / "01_mask.png", mask, rgb=False)
-        imwrite(out / "01_mask_overlay.png", overlay_mask(work, mask > 0))
+        imwrite(out / "01_mask_types.png", types, rgb=False)
+        imwrite(out / "01_mask_overlay.png", overlay_types(work, types))
         if prob is not None:
             imwrite(out / "01_damage_prob.png", (prob * 255).astype(np.uint8), rgb=False)
 
@@ -141,6 +190,8 @@ class RestorationPipeline:
             "segmenter": "unet" if self.seg is not None else "classical",
             "threshold": thr,
             "damaged_fraction": float(m.mean()),
+            "damage_by_type_%": {TYPE_NAMES[c]: round(float((types == c).mean()) * 100, 2) for c in TYPE_NAMES},
+            "mask_edited_by_user": edited,
             "color_method": color_method,
             "color_adjust": self.color_info,
             "mean_confidence_in_infill": float(conf[m].mean()) if m.any() else None,
