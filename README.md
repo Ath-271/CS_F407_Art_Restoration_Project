@@ -27,6 +27,10 @@ Automatic damage detection, frozen model (`seg_best.pt`, md5 `a11c3b0772e5`) and
 
 - Answer key: one random 512-px tile per photo, labelled from a blank start by 4 annotators; agreement on 3 shared tiles was mean IoU 0.45, which caps what any model can score.
 - The model finds clear cracks and chips on plain plaster, but misses small, scattered wear and flaking and the diffuse abrasion of ornamental panels. One panel (photos `19mar16`, `19mar20_*`) holds 39 % of Test B's labelled damage and is almost entirely missed; without it B is 0.10. It also over-flags worn floors and painted dot patterns.
+![Mandawa test results](docs/figures/fig7_test_results.png)
+
+*Figure 7 (`python scripts/make_test_figure.py`). (a) Validation is re-scored here exactly like the test (whole tile through the pipeline), giving 0.54 instead of the 0.55 measured during training. (b) Each dot is one labelled tile. (c) Only the blank-start tiles are a fair comparison; see the round-3 note below.*
+
 - Conclusion: a large **domain gap** between the training data (mostly paper and cloth) and lime-plaster walls (0.55 on in-domain validation vs 0.19 on Mandawa).
 
 **Attempted improvement (round 3, after Test A, before Test B).** Test A became a development set: its photos were split by panel into training (23 photos) and development (8 photos), 56 more tiles were labelled, and the model was fine-tuned on 64 Mandawa tiles (`--extra-real`, `--pos-boost 2`). On development tiles labelled from a blank start it tied with the original model (F1 0.40 vs 0.40), and on the old validation set it was slightly worse (0.52 vs 0.54), so the **original model was kept** for Test B. The new tiles had been labelled by correcting the model's suggested masks; on those tiles the original model scored 0.67 against 0.40 on blank-start tiles, showing that suggestion-started labels are anchored to the model that made them. They should not be used to compare models, and they probably limited what fine-tuning could learn. Checkpoints are kept in `checkpoints/round3/`; comparison: `scripts/compare_models.py`.
@@ -155,8 +159,11 @@ python scripts/restore.py painting.jpg --review-mask                       # cor
 
 **Running it on your own images** (Windows, from the project folder):
 ```powershell
-.\env\python.exe scriptsestore.py "C:\path	o\painting.jpg"           # one image
-.\env\python.exe scriptsestore.py "C:\path	oolder" --out D:esults  # every image in a folder
+.\env\python.exe scripts
+estore.py "C:\path	o\painting.jpg"           # one image
+.\env\python.exe scripts
+estore.py "C:\path	oolder" --out D:
+esults  # every image in a folder
 ```
 Useful options: `--threshold 0.4` (detect more; 0.6 = less), `--no-color`, `--color-strength 0.5`, `--classes crack,loss`, `--sr-scale 1` (no upscaling), `--no-uncertainty` (faster).
 

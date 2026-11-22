@@ -13,4 +13,6 @@ No image from the Mandawa test set appears in any figure.
 | fig5 | *Garh Palace Bundi 07* | Deepank Ranka, [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Garh_Palace_Bundi_07.jpg), CC BY-SA 4.0 |
 | fig6 | *Bundi, Garh Palace, Chitrasala: Elephants fight* | Daniel Villafruela, [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Bundi-Garh_Palace-Chitrasala-Elephants_fight-20131015.jpg), CC BY-SA 3.0 |
 
+fig7 (test results) contains only numbers computed from the Mandawa test; no Mandawa image is shown.
+
 The figures that contain CC BY-SA images (fig4, fig5, fig6) are adaptations of those images and are shared under **CC BY-SA 4.0**.
