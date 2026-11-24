@@ -92,7 +92,7 @@ For the notebook, choose the **"AI Restoration (py3.11)"** kernel. It is already
 
 Note: some networks block GitHub's release-asset server, so `download_weights.py` falls back to Hugging Face mirrors.
 
-**Not in this repository** (see `.gitignore`): `data/` (datasets and the professor's test photos), `weights/`, `checkpoints/` and `outputs/`. Pretrained LaMa / Real-ESRGAN weights come from `download_weights.py`. Our trained models (`checkpoints/seg_best.pt`, `checkpoints/color_best.pt`) are shared separately; put them in `checkpoints/` or retrain with the workflow below.
+**Not in this repository** (see `.gitignore`): `data/` (datasets and the professor's test photos), `weights/`, `checkpoints/` and `outputs/`. Pretrained LaMa / Real-ESRGAN weights come from `download_weights.py`. Our trained models (`checkpoints/seg_best.pt`, `checkpoints/color_best.pt`) are on [Google Drive](https://drive.google.com/drive/folders/1Pv9W2eL9oPQELK9KxO-bxyNYqQCiMsTA?usp=sharing) (about 98 MB each); put them in `checkpoints/` with the same names, or retrain with the workflow below. `seg_best.pt` has MD5 starting `a11c3b0772e5`.
 
 **Smoke test without real data:** `python scripts/make_demo_data.py` creates procedural folk-art-style images in `data/demo/`. Use them only to check that the scripts run, never as training data for the real model.
 
