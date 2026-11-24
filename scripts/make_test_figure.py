@@ -56,7 +56,7 @@ def main():
     f1_ab = 2 * tot[0] / (2 * tot[0] + tot[1] + tot[2])
 
     val = float(comp[(old, "old_real_val")]["f1"])
-    bars = [("Validation\n(in-domain, 36 tiles)", val),
+    bars = [("Validation\n(36 tiles, mostly fresco)", val),
             ("Test A\n(31 photos)", summ["A"]["pooled_f1"]),
             ("Test B\n(32 photos)", summ["B"]["pooled_f1"]),
             ("Test A + B\n(63 photos)", f1_ab)]
