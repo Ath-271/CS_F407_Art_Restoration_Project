@@ -27,6 +27,7 @@ Automatic damage detection, frozen model (`seg_best.pt`, md5 `a11c3b0772e5`) and
 
 - Answer key: one random 512-px tile per photo, labelled from a blank start by 4 annotators; agreement on 3 shared tiles was mean IoU 0.45, which caps what any model can score.
 - The model finds clear cracks and chips on plain plaster, but misses small, scattered wear and flaking and the diffuse abrasion of ornamental panels. One panel (photos `19mar16`, `19mar20_*`) holds 39 % of Test B's labelled damage and is almost entirely missed; without it B is 0.10. It also over-flags worn floors and painted dot patterns.
+
 ![Mandawa test results](docs/figures/fig7_test_results.png)
 
 *Figure 7 (`python scripts/make_test_figure.py`). (a) Validation is re-scored here exactly like the test (whole tile through the pipeline), giving 0.54 instead of the 0.55 measured during training. (b) Each dot is one labelled tile. (c) Only the blank-start tiles are a fair comparison; see the round-3 note below.*
@@ -159,11 +160,8 @@ python scripts/restore.py painting.jpg --review-mask                       # cor
 
 **Running it on your own images** (Windows, from the project folder):
 ```powershell
-.\env\python.exe scripts
-estore.py "C:\path	o\painting.jpg"           # one image
-.\env\python.exe scripts
-estore.py "C:\path	oolder" --out D:
-esults  # every image in a folder
+.\env\python.exe scripts\restore.py "C:\path\to\painting.jpg"              # one image
+.\env\python.exe scripts\restore.py "C:\path\to\folder" --out "D:\results"  # every image in a folder
 ```
 Useful options: `--threshold 0.4` (detect more; 0.6 = less), `--no-color`, `--color-strength 0.5`, `--classes crack,loss`, `--sr-scale 1` (no upscaling), `--no-uncertainty` (faster).
 
