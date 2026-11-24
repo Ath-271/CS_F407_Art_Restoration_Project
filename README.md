@@ -32,11 +32,11 @@ Automatic damage detection, frozen model (`seg_best.pt`, md5 `a11c3b0772e5`) and
 
 *Figure 7 (`python scripts/make_test_figure.py`). (a) Validation is re-scored here exactly like the test (whole tile through the pipeline), giving 0.54 instead of the 0.55 measured during training. (b) Each dot is one labelled tile. (c) Only the blank-start tiles are a fair comparison; see the round-3 note below.*
 
-- Conclusion: a large **domain gap** between the training data (mostly paper and cloth) and lime-plaster walls (0.55 on in-domain validation vs 0.19 on Mandawa).
+- Conclusion: the validation score does **not transfer to Mandawa** (0.54 vs 0.19, scored the same way). Paper/cloth vs plaster does not explain this: the validation score comes almost entirely from frescoes (see the split below), so the drop is between those frescoes and the Mandawa walls. The kind and amount of damage (large losses vs small scattered wear and abrasion) is a likely factor, but we did not test it. Choosing the checkpoint and threshold on the validation tiles also makes that score slightly optimistic.
 
 **Attempted improvement (round 3, after Test A, before Test B).** Test A became a development set: its photos were split by panel into training (23 photos) and development (8 photos), 56 more tiles were labelled, and the model was fine-tuned on 64 Mandawa tiles (`--extra-real`, `--pos-boost 2`). On development tiles labelled from a blank start it tied with the original model (F1 0.40 vs 0.40), and on the old validation set it was slightly worse (0.52 vs 0.54), so the **original model was kept** for Test B. The new tiles had been labelled by correcting the model's suggested masks; on those tiles the original model scored 0.67 against 0.40 on blank-start tiles, showing that suggestion-started labels are anchored to the model that made them. They should not be used to compare models, and they probably limited what fine-tuning could learn. Checkpoints are kept in `checkpoints/round3/`; comparison: `scripts/compare_models.py`.
 
-### Validation (in-domain)
+### Validation
 
 | | Value |
 |---|---|
@@ -46,13 +46,23 @@ Automatic damage detection, frozen model (`seg_best.pt`, md5 `a11c3b0772e5`) and
 | Colour de-fading, PSNR on synthetically faded validation tiles | 23.0 dB vs 19.2 dB for the faded input |
 | Full pipeline, one 2048-px painting, RTX 4060 laptop | 8-18 s |
 
+**The pooled validation F1 is mostly a fresco score.** Same 36 tiles and model, split by painting type (raw probability > 0.5, as in section 4 of the notebook):
+
+| Validation tiles | Tiles | Share of labelled damage pixels | F1 | Precision | Recall |
+|---|---|---|---|---|---|
+| Frescoes / wall paintings | 21 | 97 % | 0.55 | 0.50 | 0.60 |
+| Paper and cloth | 15 | 3 % | **0.02** | 0.03 | 0.02 |
+| All | 36 | 100 % | 0.54 | 0.49 | 0.58 |
+
+On paper and cloth the model finds almost none of the labelled damage, which is small and sparse there (15 tiles, so 0.02 is a rough figure). Damage types are also unreliable: per-class F1 is 0.57 for loss, 0.04 for cracks and 0.02 for stains.
+
 Figures are in [`docs/figures/`](docs/figures/) (sources and licences in [`SOURCES.md`](docs/figures/SOURCES.md); exact numbers in `numbers.json`). To regenerate them, run `python scripts/make_report_figures.py`.
 
 ![Pipeline stages](docs/figures/fig6_pipeline_stages.jpg)
 ![Round 1 vs round 2 on validation paintings](docs/figures/fig4_round1_vs_round2.jpg)
 ![Detection training curves](docs/figures/fig1_seg_training_curves.png)
 
-Known weaknesses (validation and test): it misses small scattered damage and diffuse abrasion on plaster; on worn plaster walls the detector marks large areas of abraded background as damage; some dense painted textures (e.g. feather patterns) are flagged; Pix2Pix can leave local colour patches in dark areas.
+Known weaknesses (validation and test): it misses almost all labelled damage on the paper and cloth validation tiles; it misses small scattered damage and diffuse abrasion on plaster; on worn plaster walls the detector marks large areas of abraded background as damage; some dense painted textures (e.g. feather patterns) are flagged; Pix2Pix can leave local colour patches in dark areas.
 
 ## Why the previous version failed on real paintings, and what changed
 
@@ -205,7 +215,7 @@ The data is split into three sets:
 - **What happened:** A was scored once (F1 0.27); the model was then changed (round 3) but did not beat the original on blank-labelled development tiles, so the **original** model was scored once on B (F1 0.07). Both runs are in `outputs/test_runs_log.csv`. B is now used up: later changes cannot get a new unbiased Mandawa score.
 - Round-3 tools: `make_mandawa_dev_tiles.py` (extra tiles from Test A photos only, split by panel into train/dev, saved once in `data/mandawa_A_label/roles.csv`), `prepare_mandawa_round.py`, `train_seg.py --init --extra-real --dev --pos-boost --low-mem`, `compare_models.py`.
 - **Personal hold-out:** 4 further Mandawa photos in `data/personal_holdout/` are excluded from everything, for qualitative testing only.
-- Expect a domain gap: Mandawa paintings are on lime plaster, while most training data is paper and cloth (frescoes are about 10 %). Report the result honestly.
+- Scores on Mandawa are much lower than on validation, even though the validation score is dominated by other frescoes (see Results). Report the result honestly.
 
 ## Validation notebook
 
