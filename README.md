@@ -43,7 +43,7 @@ Automatic damage detection, frozen model (`seg_best.pt`, md5 `a11c3b0772e5`) and
 | Damage detection, F1 on 36 real validation tiles (27 paintings never used for training) | **0.55** (IoU 0.38), threshold 0.5 |
 | Same tiles, round-1 model trained on synthetic damage only | 0.30 (IoU 0.17), even with its threshold re-tuned on these tiles |
 | Agreement between our 4 annotators (calibration tiles, 36 pairs) | mean IoU 0.38 (0.45 on the Mandawa test tiles) |
-| Colour de-fading, PSNR on synthetically faded validation tiles | 23.0 dB vs 19.2 dB for the faded input |
+| Colour de-fading, PSNR on synthetically faded crops of the training paintings (not held out) | 23.0 dB vs 19.2 dB for the faded input |
 | Full pipeline, one 2048-px painting, RTX 4060 laptop | 8-18 s |
 
 **The pooled validation F1 is mostly a fresco score.** Same 36 tiles and model, split by painting type (raw probability > 0.5, as in section 4 of the notebook):
