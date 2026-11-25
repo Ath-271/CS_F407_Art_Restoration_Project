@@ -43,16 +43,15 @@ def main():
     comp = {(r["checkpoint"], r["set"]): r for r in csv.DictReader(open(ROOT / "outputs/model_comparison.csv"))}
     old, new = "checkpoints/seg_best.pt", "checkpoints/round3/seg_best.pt"
 
-    # pool A+B from per-tile precision/recall and the answer-key sizes
+    # exact A+B counts from each split's pooled precision/recall and answer-key size
+    # (per-tile precision cannot be used: it loses the false positives of tiles with precision 0)
     import cv2
 
     tot = np.zeros(3)
     for s in "AB":
-        for r in tiles[s]:
-            g = (cv2.imread(str(ROOT / "data/test_holdout/label/masks" / f"{r['tile']}.png"), 0) > 0).sum()
-            p, rc = float(r["precision"]), float(r["recall"])
-            tp = rc * g
-            tot += [tp, tp / p - tp if p > 0 else 0.0, g - tp]
+        g = sum((cv2.imread(str(ROOT / "data/test_holdout/label/masks" / f"{r['tile']}.png"), 0) > 0).sum() for r in tiles[s])
+        tp = summ[s]["pooled_recall"] * g
+        tot += [tp, tp / summ[s]["pooled_precision"] - tp, g - tp]
     f1_ab = 2 * tot[0] / (2 * tot[0] + tot[1] + tot[2])
 
     val = float(comp[(old, "old_real_val")]["f1"])
@@ -129,7 +128,8 @@ def main():
         "test_A_f1": summ["A"]["pooled_f1"], "test_A_precision": summ["A"]["pooled_precision"],
         "test_A_recall": summ["A"]["pooled_recall"], "test_B_f1": summ["B"]["pooled_f1"],
         "test_B_precision": summ["B"]["pooled_precision"], "test_B_recall": summ["B"]["pooled_recall"],
-        "test_AB_f1": f1_ab, "test_checkpoint_md5": summ["B"]["checkpoint_md5"],
+        "test_AB_f1": f1_ab, "test_AB_precision": tot[0] / (tot[0] + tot[1]), "test_AB_recall": tot[0] / (tot[0] + tot[2]),
+        "test_checkpoint_md5": summ["B"]["checkpoint_md5"],
         "test_median_tile_f1_A": float(np.median([float(r["f1"]) for r in tiles["A"]])),
         "test_median_tile_f1_B": float(np.median([float(r["f1"]) for r in tiles["B"]])),
         "val_f1_whole_tile_same_scoring": val,

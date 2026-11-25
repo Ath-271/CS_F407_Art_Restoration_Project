@@ -22,11 +22,13 @@
   "test_B_f1": 0.07051089406461307,
   "test_B_precision": 0.14336123671025297,
   "test_B_recall": 0.04675294914713853,
-  "test_AB_f1": 0.1917332001203591,
+  "test_AB_f1": 0.19045518650284674,
   "test_checkpoint_md5": "a11c3b0772e5",
   "test_median_tile_f1_A": 0.07419354838709677,
   "test_median_tile_f1_B": 0.023605146048271464,
   "val_f1_whole_tile_same_scoring": 0.535,
   "round3_dev_blank_f1_old": 0.4,
-  "round3_dev_blank_f1_new": 0.4
+  "round3_dev_blank_f1_new": 0.4,
+  "test_AB_precision": 0.31415346764504565,
+  "test_AB_recall": 0.13664935091974723
 }

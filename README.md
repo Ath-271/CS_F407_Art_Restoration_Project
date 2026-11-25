@@ -22,11 +22,11 @@ Automatic damage detection, frozen model (`seg_best.pt`, md5 `a11c3b0772e5`) and
 | | Test A (31 photos) | Test B (32 photos) | A + B (63) |
 |---|---|---|---|
 | F1 (pooled over pixels) | 0.27 | 0.07 | **0.19** |
-| Precision / recall | 0.39 / 0.20 | 0.14 / 0.05 | |
+| Precision / recall | 0.39 / 0.20 | 0.14 / 0.05 | 0.31 / 0.14 |
 | Mean per-tile F1 | 0.14 | 0.09 | |
 
 - Answer key: one random 512-px tile per photo, labelled from a blank start by 4 annotators; agreement on 3 shared tiles was mean IoU 0.45, which caps what any model can score.
-- The model finds clear cracks and chips on plain plaster, but misses small, scattered wear and flaking and the diffuse abrasion of ornamental panels. One panel (photos `19mar16`, `19mar20_*`) holds 39 % of Test B's labelled damage and is almost entirely missed; without it B is 0.10. It also over-flags worn floors and painted dot patterns.
+- The model finds clear cracks and chips on plain plaster, but misses small, scattered wear and flaking and the diffuse abrasion of ornamental panels. One panel (photos `19mar16`, `19mar20_*`) holds 46 % of Test B's labelled damage and is almost entirely missed; without it B is 0.10. It also over-flags worn floors and painted dot patterns.
 
 ![Mandawa test results](docs/figures/fig7_test_results.png)
 
