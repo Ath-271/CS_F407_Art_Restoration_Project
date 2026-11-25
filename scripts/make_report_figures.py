@@ -85,9 +85,9 @@ def fig_color_curve(out, nums):
     b = int(np.argmin(c["val_l1"]))  # the checkpoint saved as color_best.pt (selected by val L1)
     ax.scatter([c["epoch"][b]], [c["val_psnr"][b]], color="#2471a3", zorder=5)
     ax.annotate(f"saved: epoch {int(c['epoch'][b])}, {c['val_psnr'][b]:.2f} dB (+{c['val_psnr'][b] - c['baseline_psnr'][b]:.1f})",
-                (c["epoch"][b], c["val_psnr"][b]), xytext=(-110, 10), textcoords="offset points", fontsize=9)
-    ax.set_xlabel("epoch"); ax.set_ylabel("PSNR on validation (dB)")
-    ax.set_title("Colour de-fading: synthetic-fade validation")
+                (c["epoch"][b], c["val_psnr"][b]), xytext=(-130, -75), textcoords="offset points", fontsize=9)
+    ax.set_xlabel("epoch"); ax.set_ylabel("PSNR (dB)")
+    ax.set_title("Colour de-fading: synthetic fading of training paintings (not held out)")
     ax.grid(alpha=0.3); ax.legend(fontsize=9)
     fig.savefig(out / "fig2_color_training_curve.png", dpi=200); plt.close(fig)
     nums.update(color_best_psnr=float(c["val_psnr"][b]), color_baseline_psnr=float(c["baseline_psnr"][b]),
